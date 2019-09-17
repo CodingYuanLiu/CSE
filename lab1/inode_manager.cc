@@ -27,7 +27,7 @@ disk::write_block(blockid_t id, const char *buf) //part1A
 
 // Allocate a free disk block.
 blockid_t
-block_manager::alloc_block()
+block_manager::alloc_block() //Part1B
 {
   /*
    * your code goes here.
@@ -46,7 +46,7 @@ block_manager::alloc_block()
 }
 
 void
-block_manager::free_block(uint32_t id)
+block_manager::free_block(uint32_t id) //Part1B
 {
   /* 
    * your code goes here.
@@ -116,7 +116,7 @@ inode_manager::alloc_inode(uint32_t type) //part1A
   for(;target < INODE_NUM; target++){
     new_inode = get_inode(target);
     if(new_inode == NULL){
-      new_inode = (struct inode*)malloc(sizeof(struct inode));
+      new_inode = new inode();
       new_inode->type = (short)type;
       new_inode->atime = 0;
       new_inode->ctime = 0;
@@ -193,20 +193,32 @@ inode_manager::put_inode(uint32_t inum, struct inode *ino)
 /* Get all the data of a file by inum. 
  * Return alloced data, should be freed by caller. */
 void
-inode_manager::read_file(uint32_t inum, char **buf_out, int *size)
+inode_manager::read_file(uint32_t inum, char **buf_out, int *size) //Part1B
 {
   /*
    * your code goes here.
    * note: read blocks related to inode number inum,
    * and copy them to buf_Out
    */
-  
+  inode* node = get_inode(inum);
+  *size = node->size;
+  int blocknum = (*size-1)/BLOCK_SIZE + 1;
+  if ( blocknum > BLOCK_NUM){
+    printf("read_file error: blocknum out of bound.\n");
+    return;
+  }
+  buf_out = (char **)malloc( blocknum * sizeof(char *));
+  for (int i = 0; i < blocknum; i++){
+    buf_out[i] = (char *)malloc(BLOCK_SIZE);
+    bm->read_block(node->blocks[i],buf_out[i]);
+  }
+  node->atime = (unsigned) time(0);
   return;
 }
 
 /* alloc/free blocks if needed */
 void
-inode_manager::write_file(uint32_t inum, const char *buf, int size)
+inode_manager::write_file(uint32_t inum, const char *buf, int size) //Part1B
 {
   /*
    * your code goes here.
@@ -214,7 +226,16 @@ inode_manager::write_file(uint32_t inum, const char *buf, int size)
    * you need to consider the situation when the size of buf 
    * is larger or smaller than the size of original inode
    */
-  
+  inode* node = get_inode(inum);
+  int blocknum = (size - 1) / BLOCK_SIZE + 1;
+  if (blocknum > BLOCK_SIZE){
+    printf("write_file error: blocknum out of bound.\n");
+    return;
+  }
+  for (int i = 0; i < blocknum; i++){
+    bm->write_block(node->blocks[i],buf);
+  }
+
   return;
 }
 
