@@ -35,10 +35,11 @@ block_manager::alloc_block() //Part1B
    * you need to think about which block you can start to be allocated.
    */
   //check = IBLOCK(INODE_NUM,sb.nblocks) + 1
-  for(uint32_t check = IBLOCK(INODE_NUM,sb.nblocks);check < BLOCK_NUM;check++){
-    if(using_blocks[check] == 0){
-      using_blocks[check] = 1;
-      return check;
+  uint32_t base = IBLOCK(INODE_NUM,sb.nblocks) + 1;
+  for(uint32_t check = 0;check < BLOCK_NUM; check++){
+    if(using_blocks[check + base] == 0){
+      using_blocks[check + base] = 1;
+      return check + base;
     }
   }
 
@@ -118,9 +119,9 @@ inode_manager::alloc_inode(uint32_t type) //part1A
     if(new_inode == NULL){
       new_inode = new inode();
       new_inode->type = (short)type;
-      new_inode->atime = 0;
-      new_inode->ctime = 0;
-      new_inode->mtime = 0;
+      new_inode->atime = time(0);
+      new_inode->ctime = time(0);
+      new_inode->mtime = time(0);
       put_inode(target,new_inode);
       free(new_inode);
       return target;
@@ -151,7 +152,7 @@ inode_manager::get_inode(uint32_t inum)
   char buf[BLOCK_SIZE];
 
   printf("\tim: get_inode %d\n", inum);
-
+  
   if (inum < 0 || inum >= INODE_NUM) {
     printf("\tim: inum out of range\n");
     return NULL;
@@ -186,6 +187,7 @@ inode_manager::put_inode(uint32_t inum, struct inode *ino)
   ino_disk = (struct inode*)buf + inum%IPB;
   *ino_disk = *ino;
   bm->write_block(IBLOCK(inum, bm->sb.nblocks), buf);
+
 }
 
 #define MIN(a,b) ((a)<(b) ? (a) : (b))
@@ -207,12 +209,14 @@ inode_manager::read_file(uint32_t inum, char **buf_out, int *size) //Part1B
     printf("read_file error: blocknum out of bound.\n");
     return;
   }
-  buf_out = (char **)malloc( blocknum * sizeof(char *));
+  char** buf_out_here = (char **)malloc(blocknum * sizeof(char *));
   for (int i = 0; i < blocknum; i++){
-    buf_out[i] = (char *)malloc(BLOCK_SIZE);
-    bm->read_block(node->blocks[i],buf_out[i]);
+    buf_out_here[i] = (char *)malloc(BLOCK_SIZE);
+    bm->read_block(node->blocks[i],buf_out_here[i]);
   }
   node->atime = (unsigned) time(0);
+  put_inode(inum,node);
+  *buf_out = *buf_out_here;
   return;
 }
 
@@ -227,15 +231,19 @@ inode_manager::write_file(uint32_t inum, const char *buf, int size) //Part1B
    * is larger or smaller than the size of original inode
    */
   inode* node = get_inode(inum);
+  node->size = size;
   int blocknum = (size - 1) / BLOCK_SIZE + 1;
   if (blocknum > BLOCK_SIZE){
     printf("write_file error: blocknum out of bound.\n");
     return;
   }
   for (int i = 0; i < blocknum; i++){
+    node->blocks[i] = bm->alloc_block(); 
     bm->write_block(node->blocks[i],buf);
   }
-
+  node->mtime = (unsigned) time(0);
+  node->atime = (unsigned) time(0);
+  put_inode(inum,node);
   return;
 }
 
