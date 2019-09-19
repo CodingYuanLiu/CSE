@@ -53,7 +53,14 @@ block_manager::free_block(uint32_t id) //Part1B
    * your code goes here.
    * note: you should unmark the corresponding bit in the block bitmap when free.
    */
-  
+  if(using_blocks[id] == 0){ // Already freed
+    printf("The block is already freed.\n");
+    return;
+  } else{
+    using_blocks[id] = 0;
+    //printf("Free block %d\n",id);
+  }
+
   return;
 }
 
@@ -131,13 +138,16 @@ inode_manager::alloc_inode(uint32_t type) //part1A
 }
 
 void
-inode_manager::free_inode(uint32_t inum)
+inode_manager::free_inode(uint32_t inum) //part1C
 {
   /* 
    * your code goes here.
    * note: you need to check if the inode is already a freed one;
    * if not, clear it, and remember to write back to disk.
    */
+  blockid_t inode_block = IBLOCK(inum,bm->sb.nblocks);
+
+  
 
   return;
 }
@@ -265,7 +275,7 @@ inode_manager::getattr(uint32_t inum, extent_protocol::attr &a) //part1A
 }
 
 void
-inode_manager::remove_file(uint32_t inum)
+inode_manager::remove_file(uint32_t inum) //part1C
 {
   /*
    * your code goes here
