@@ -138,17 +138,21 @@ inode_manager::alloc_inode(uint32_t type) //part1A
 }
 
 void
-inode_manager::free_inode(uint32_t inum) //part1C
+inode_manager::free_inode(uint32_t inum)
 {
   /* 
    * your code goes here.
    * note: you need to check if the inode is already a freed one;
    * if not, clear it, and remember to write back to disk.
    */
-  blockid_t inode_block = IBLOCK(inum,bm->sb.nblocks);
-
-  
-
+  inode* node = get_inode(inum);
+  if (!node || node->type == 0){
+    printf("The inode is already freed.\n");
+    return;
+  } 
+  node->type = 0;
+  put_inode(inum,node);
+  free(node);
   return;
 }
 
@@ -213,20 +217,31 @@ inode_manager::read_file(uint32_t inum, char **buf_out, int *size) //Part1B
    * and copy them to buf_Out
    */
   inode* node = get_inode(inum);
+  uint32_t filesize = node->size;
   *size = node->size;
-  int blocknum = (*size-1)/BLOCK_SIZE + 1;
+  int blocknum = FILE_BLOCK_NUM(*size);
   if ( blocknum > BLOCK_NUM){
     printf("read_file error: blocknum out of bound.\n");
     return;
   }
-  char** buf_out_here = (char **)malloc(blocknum * sizeof(char *));
-  for (int i = 0; i < blocknum; i++){
-    buf_out_here[i] = (char *)malloc(BLOCK_SIZE);
-    bm->read_block(node->blocks[i],buf_out_here[i]);
+  char* file_data = (char *)malloc(filesize);
+  uint32_t readsize = 0;
+  for (int i = 0; i < NDIRECT && readsize < filesize; i++){
+    if(readsize + BLOCK_SIZE < filesize){
+      bm->read_block(node->blocks[i], file_data + readsize);
+      readsize += BLOCK_SIZE;
+    } else{
+      char* buf = (char *) malloc(BLOCK_SIZE);
+      int len = filesize - readsize;
+      bm->read_block(node->blocks[i],buf);
+      memcpy(file_data + readsize,buf,len);
+      readsize += len;
+    }
   }
+
   node->atime = (unsigned) time(0);
   put_inode(inum,node);
-  *buf_out = *buf_out_here;
+  *buf_out = file_data;
   return;
 }
 
@@ -242,18 +257,19 @@ inode_manager::write_file(uint32_t inum, const char *buf, int size) //Part1B
    */
   inode* node = get_inode(inum);
   node->size = size;
-  int blocknum = (size - 1) / BLOCK_SIZE + 1;
+  int blocknum = FILE_BLOCK_NUM(size);
   if (blocknum > BLOCK_SIZE){
     printf("write_file error: blocknum out of bound.\n");
     return;
   }
   for (int i = 0; i < blocknum; i++){
     node->blocks[i] = bm->alloc_block(); 
-    bm->write_block(node->blocks[i],buf);
+    bm->write_block(node->blocks[i],buf + i * BLOCK_SIZE);
   }
   node->mtime = (unsigned) time(0);
   node->atime = (unsigned) time(0);
   put_inode(inum,node);
+  free(node);
   return;
 }
 
@@ -265,22 +281,31 @@ inode_manager::getattr(uint32_t inum, extent_protocol::attr &a) //part1A
    * note: get the attributes of inode inum.
    * you can refer to "struct attr" in extent_protocol.h
    */
-  inode* inode = get_inode(inum);
-  a.type = inode->type;
-  a.atime = inode->atime;
-  a.mtime = inode->mtime;
-  a.ctime = inode->ctime;
-  a.size = inode->size;
+  inode* node = get_inode(inum);
+  if(!node){
+    return;
+  }
+  a.type = node->type;
+  a.atime = node->atime;
+  a.mtime = node->mtime;
+  a.ctime = node->ctime;
+  a.size = node->size;
   return;
 }
 
 void
-inode_manager::remove_file(uint32_t inum) //part1C
+inode_manager::remove_file(uint32_t inum)
 {
   /*
    * your code goes here
    * note: you need to consider about both the data block and inode of the file
    */
-  
+  inode* node = get_inode(inum);
+  int blocknum;
+  blocknum = node->size==0 ? 0 : FILE_BLOCK_NUM(node->size);
+  for(int i = 0; i < blocknum; i++){
+    bm->free_block(node->blocks[i]);
+  }
+  free_inode(inum);
   return;
 }
