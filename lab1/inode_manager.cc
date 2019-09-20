@@ -285,32 +285,46 @@ inode_manager::write_file(uint32_t inum, const char *buf, int size) //Part1B
     return;
   }
   int writeSize = 0;
-  //TODO: Handle indirect here.
+
+  /* 
+    Cases: 
+    1. new blocknum < ndirect:
+      1.1 old blocknum < new blocknum < ndirect
+      1.2 new blocknum < old blocknum < ndirect
+      1.3 new blocknum < ndirect < old blocknum
+    2. new blocknum > ndirect:
+      2.1 old blocknum < ndirect < new blocknum
+      2.2 ndirect < old blocknum < new blocknum 
+        || ndirect < new blocknum < old blocknum (All free indirect blocks first)
+  */
   if(blocknum <= NDIRECT){
     int currentBlock;
     //no need to alloc new block.
+    //Case 1.2
     for(currentBlock = 0; writeSize < originalSize && writeSize < size;writeSize += BLOCK_SIZE,currentBlock++){
         bm->write_block(node->blocks[currentBlock],buf + writeSize);
     }
+
     //New block needs to be allocated
+    //Case 1.1
     if(writeSize < size){
       for(;currentBlock < NDIRECT && writeSize < size ; writeSize += BLOCK_SIZE , currentBlock++){
         node->blocks[currentBlock] = bm->alloc_block();
         bm->write_block(node->blocks[currentBlock],buf + writeSize);
       }
     } else if ( writeSize < originalSize ){ // old blocks need to be freed
+      // Case 1.2
       int freeSize = writeSize;
       for(;currentBlock < NDIRECT && freeSize < originalSize;currentBlock++,freeSize += BLOCK_SIZE){
         bm->free_block(currentBlock);
       }
       
+      // Case 1.3
       //Free INDIRECT BLOCKS
       if (freeSize < originalSize){
         blockid_t indirectBlocks[BLOCK_SIZE];
-        if(currentBlock != NDIRECT){
-          printf("Something wrong here\n");
-          exit(0);
-        }
+        assert(currentBlock == NDIRECT);
+        
         bm->read_block(node->blocks[NDIRECT],(char *)indirectBlocks);
         for(uint32_t j = 0;j < NINDIRECT && freeSize < originalSize; j++,freeSize += BLOCK_SIZE){
           bm->free_block(indirectBlocks[j]);
@@ -319,23 +333,22 @@ inode_manager::write_file(uint32_t inum, const char *buf, int size) //Part1B
     }
   } 
   
-  
+  // Case 2
   else { 
     //BLOCKNUM > NDIRECT, which means that new file contains indirect blocks.
     int currentBlock;
-    
     //no need to alloc new block.
+    //Case 2.1
     for(currentBlock = 0; currentBlock < NDIRECT && writeSize < originalSize;writeSize += BLOCK_SIZE,currentBlock++){
       bm->write_block(node->blocks[currentBlock],buf + writeSize);
     }
-    if(writeSize >= originalSize) { // Need to alloc new blocks for direct blocks
-      node->blocks[currentBlock] = bm->alloc_block();
-      bm->write_block(node->blocks[currentBlock],buf + writeSize);
-    } else{ 
-      //new files and old files both contain indirect blocks.
-      if(currentBlock != NDIRECT){
-        printf("Something wrong here.");
-      }
+    
+    //Case 2.2
+    //new files and old files both contain indirect blocks.
+    //Free indirect blocks
+    if(writeSize < originalSize){
+      assert(currentBlock == NDIRECT);
+
       //Free the indirect blocks of the old file first
       int freeSize = writeSize;
       blockid_t originalIndirectBlocks[BLOCK_SIZE];
@@ -344,18 +357,23 @@ inode_manager::write_file(uint32_t inum, const char *buf, int size) //Part1B
         bm->free_block(originalIndirectBlocks[j]);
       }
       bm->free_block(node->blocks[NDIRECT]);
-
-      //TODO: Write the indirect blocks.
-      blockid_t writeIndirectBlocks[BLOCK_SIZE];
-      for(uint32_t j = 0;j < NINDIRECT && writeSize < size; j++,writeSize += BLOCK_SIZE ){
-        writeIndirectBlocks[j] = bm -> alloc_block();
-        bm->write_block(writeIndirectBlocks[j],buf + writeSize);
+    } else{
+      //Case 2.1: write the new direct blocks.
+      for(; currentBlock < NDIRECT; writeSize += BLOCK_SIZE,currentBlock++){
+        node->blocks[currentBlock] = bm->alloc_block();
+        bm->write_block(node->blocks[currentBlock],buf + writeSize);
       }
-      node->blocks[NDIRECT] = bm->alloc_block();
-      bm->write_block(node->blocks[NDIRECT],(char *)writeIndirectBlocks);
     }
+    //Case 2.1 && Case 2.2, write the indirect blocks
+    blockid_t writeIndirectBlocks[BLOCK_SIZE];
+    for(uint32_t j = 0;j < NINDIRECT && writeSize < size; j++,writeSize += BLOCK_SIZE ){
+      writeIndirectBlocks[j] = bm -> alloc_block();
+      bm->write_block(writeIndirectBlocks[j],buf + writeSize);
+    }
+    node->blocks[NDIRECT] = bm->alloc_block();
+    bm->write_block(node->blocks[NDIRECT],(char *)writeIndirectBlocks);
+    
   }
-
 
   node->mtime = (unsigned) time(0);
   node->atime = (unsigned) time(0);
@@ -395,9 +413,20 @@ inode_manager::remove_file(uint32_t inum)
   inode* node = get_inode(inum);
   int blocknum;
   blocknum = node->size==0 ? 0 : FILE_BLOCK_NUM(node->size);
-  for(int i = 0; i < blocknum; i++){
+  int i = 0;
+  for(; i < blocknum && i < NDIRECT; i++){
     bm->free_block(node->blocks[i]);
   }
+  if(i < blocknum){
+    int freeSize = NDIRECT * BLOCK_SIZE;
+    int fileSize = node->size;
+    blockid_t indirectBlocks[BLOCK_SIZE];
+    bm->read_block(node->blocks[NDIRECT],(char *)indirectBlocks); 
+    for(uint32_t i = 0;i < NINDIRECT && freeSize < fileSize; i++,freeSize += BLOCK_SIZE){
+      bm->free_block(indirectBlocks[i]);
+    }
+  }
   free_inode(inum);
+  free(node);
   return;
 }

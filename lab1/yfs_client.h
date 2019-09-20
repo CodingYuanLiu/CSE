@@ -6,6 +6,7 @@
 #include "extent_client.h"
 #include <vector>
 
+#define MAX_FILE_NAMESIZE 64
 
 class yfs_client {
   extent_client *ec;
@@ -29,6 +30,11 @@ class yfs_client {
   struct dirent {
     std::string name;
     yfs_client::inum inum;
+  };
+  struct dir_entry {
+    char filename[MAX_FILE_NAMESIZE];
+    yfs_client::inum inum;
+    size_t nameSize;
   };
 
  private:
