@@ -233,7 +233,8 @@ inode_manager::read_file(uint32_t inum, char **buf_out, int *size) //Part1B
     if (readSize + BLOCK_SIZE < fileSize){
       bm->read_block(node->blocks[i], file_data + readSize);
       readSize += BLOCK_SIZE;
-    } else{ // last one
+    } else{ 
+      // last one
       char* buf = (char *) malloc(BLOCK_SIZE);
       int len = fileSize - readSize;
       bm->read_block(node->blocks[i],buf);
@@ -316,7 +317,7 @@ inode_manager::write_file(uint32_t inum, const char *buf, int size) //Part1B
       // Case 1.2
       int freeSize = writeSize;
       for(;currentBlock < NDIRECT && freeSize < originalSize;currentBlock++,freeSize += BLOCK_SIZE){
-        bm->free_block(currentBlock);
+        bm->free_block(node->blocks[currentBlock]);
       }
       
       // Case 1.3
@@ -330,6 +331,7 @@ inode_manager::write_file(uint32_t inum, const char *buf, int size) //Part1B
           bm->free_block(indirectBlocks[j]);
         }
       }
+      bm->free_block(node->blocks[NDIRECT]);
     }
   } 
   
@@ -360,7 +362,7 @@ inode_manager::write_file(uint32_t inum, const char *buf, int size) //Part1B
     } else{
       //Case 2.1: write the new direct blocks.
       for(; currentBlock < NDIRECT; writeSize += BLOCK_SIZE,currentBlock++){
-        node->blocks[currentBlock] = bm->alloc_block();
+        node->blocks[currentBlock] = bm->alloc_blhttps://www.cnblogs.com/fnlingnzb-learner/p/5889483.htmlock();
         bm->write_block(node->blocks[currentBlock],buf + writeSize);
       }
     }
@@ -430,3 +432,4 @@ inode_manager::remove_file(uint32_t inum)
   free(node);
   return;
 }
+
