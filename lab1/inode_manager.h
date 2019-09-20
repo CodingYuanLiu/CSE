@@ -10,6 +10,8 @@
 #define BLOCK_SIZE 512
 #define BLOCK_NUM  (DISK_SIZE/BLOCK_SIZE)
 
+
+#define FILE_BLOCK_NUM(size) (((size) - 1) / BLOCK_SIZE + 1) 
 typedef uint32_t blockid_t;
 
 // disk layer -----------------------------------------

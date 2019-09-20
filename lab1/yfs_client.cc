@@ -144,7 +144,6 @@ yfs_client::create(inum parent, const char *name, mode_t mode, inum &ino_out)
      * note: lookup is what you need to check if file exist;
      * after create file or dir, you must remember to modify the parent infomation.
      */
-
     return r;
 }
 

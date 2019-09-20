@@ -126,6 +126,7 @@ inode_manager::alloc_inode(uint32_t type) //part1A
     if(new_inode == NULL){
       new_inode = new inode();
       new_inode->type = (short)type;
+      new_inode->size = 0;
       new_inode->atime = time(0);
       new_inode->ctime = time(0);
       new_inode->mtime = time(0);
@@ -217,25 +218,46 @@ inode_manager::read_file(uint32_t inum, char **buf_out, int *size) //Part1B
    * and copy them to buf_Out
    */
   inode* node = get_inode(inum);
-  uint32_t filesize = node->size;
+  uint32_t fileSize = node->size;
   *size = node->size;
   int blocknum = FILE_BLOCK_NUM(*size);
   if ( blocknum > BLOCK_NUM){
     printf("read_file error: blocknum out of bound.\n");
     return;
   }
-  char* file_data = (char *)malloc(filesize);
-  uint32_t readsize = 0;
-  for (int i = 0; i < NDIRECT && readsize < filesize; i++){
-    if(readsize + BLOCK_SIZE < filesize){
-      bm->read_block(node->blocks[i], file_data + readsize);
-      readsize += BLOCK_SIZE;
-    } else{
+  char* file_data = (char *)malloc(fileSize);
+  uint32_t readSize = 0;
+  int i = 0; // denote to the current block
+  for (; i < NDIRECT && readSize < fileSize; i++){
+    //Not the last one
+    if (readSize + BLOCK_SIZE < fileSize){
+      bm->read_block(node->blocks[i], file_data + readSize);
+      readSize += BLOCK_SIZE;
+    } else{ // last one
       char* buf = (char *) malloc(BLOCK_SIZE);
-      int len = filesize - readsize;
+      int len = fileSize - readSize;
       bm->read_block(node->blocks[i],buf);
-      memcpy(file_data + readsize,buf,len);
-      readsize += len;
+      memcpy(file_data + readSize,buf,len);
+      readSize += len;
+    }
+  }
+  // READ INDIRECT BLOCK
+  if (readSize < fileSize){
+    blockid_t indirectBlocks[BLOCK_SIZE];
+    bm->read_block(node->blocks[NDIRECT],(char*)indirectBlocks);
+    for(uint32_t j = 0;j < NINDIRECT && readSize < fileSize; j++){
+      //Not the last one
+      blockid_t inblock = indirectBlocks[j];
+      if (readSize + BLOCK_SIZE < fileSize){
+        bm->read_block(inblock,file_data + readSize);
+        readSize += BLOCK_SIZE;
+      } else{
+        char* buf = (char *)malloc(BLOCK_SIZE);
+        int len = fileSize - readSize;
+        bm->read_block(inblock,buf);
+        memcpy(file_data + readSize,buf,len);
+        readSize += len;
+      }
     }
   }
 
@@ -256,18 +278,88 @@ inode_manager::write_file(uint32_t inum, const char *buf, int size) //Part1B
    * is larger or smaller than the size of original inode
    */
   inode* node = get_inode(inum);
-  node->size = size;
+  int originalSize = node->size;
   int blocknum = FILE_BLOCK_NUM(size);
-  if (blocknum > BLOCK_SIZE){
+  if (blocknum > BLOCK_NUM){
     printf("write_file error: blocknum out of bound.\n");
     return;
   }
-  for (int i = 0; i < blocknum; i++){
-    node->blocks[i] = bm->alloc_block(); 
-    bm->write_block(node->blocks[i],buf + i * BLOCK_SIZE);
+  int writeSize = 0;
+  //TODO: Handle indirect here.
+  if(blocknum <= NDIRECT){
+    int currentBlock;
+    //no need to alloc new block.
+    for(currentBlock = 0; writeSize < originalSize && writeSize < size;writeSize += BLOCK_SIZE,currentBlock++){
+        bm->write_block(node->blocks[currentBlock],buf + writeSize);
+    }
+    //New block needs to be allocated
+    if(writeSize < size){
+      for(;currentBlock < NDIRECT && writeSize < size ; writeSize += BLOCK_SIZE , currentBlock++){
+        node->blocks[currentBlock] = bm->alloc_block();
+        bm->write_block(node->blocks[currentBlock],buf + writeSize);
+      }
+    } else if ( writeSize < originalSize ){ // old blocks need to be freed
+      int freeSize = writeSize;
+      for(;currentBlock < NDIRECT && freeSize < originalSize;currentBlock++,freeSize += BLOCK_SIZE){
+        bm->free_block(currentBlock);
+      }
+      
+      //Free INDIRECT BLOCKS
+      if (freeSize < originalSize){
+        blockid_t indirectBlocks[BLOCK_SIZE];
+        if(currentBlock != NDIRECT){
+          printf("Something wrong here\n");
+          exit(0);
+        }
+        bm->read_block(node->blocks[NDIRECT],(char *)indirectBlocks);
+        for(uint32_t j = 0;j < NINDIRECT && freeSize < originalSize; j++,freeSize += BLOCK_SIZE){
+          bm->free_block(indirectBlocks[j]);
+        }
+      }
+    }
+  } 
+  
+  
+  else { 
+    //BLOCKNUM > NDIRECT, which means that new file contains indirect blocks.
+    int currentBlock;
+    
+    //no need to alloc new block.
+    for(currentBlock = 0; currentBlock < NDIRECT && writeSize < originalSize;writeSize += BLOCK_SIZE,currentBlock++){
+      bm->write_block(node->blocks[currentBlock],buf + writeSize);
+    }
+    if(writeSize >= originalSize) { // Need to alloc new blocks for direct blocks
+      node->blocks[currentBlock] = bm->alloc_block();
+      bm->write_block(node->blocks[currentBlock],buf + writeSize);
+    } else{ 
+      //new files and old files both contain indirect blocks.
+      if(currentBlock != NDIRECT){
+        printf("Something wrong here.");
+      }
+      //Free the indirect blocks of the old file first
+      int freeSize = writeSize;
+      blockid_t originalIndirectBlocks[BLOCK_SIZE];
+      bm->read_block(node->blocks[NDIRECT],(char *)originalIndirectBlocks);
+      for(uint32_t j = 0;j < NINDIRECT && freeSize < originalSize ; j++, freeSize += BLOCK_SIZE){
+        bm->free_block(originalIndirectBlocks[j]);
+      }
+      bm->free_block(node->blocks[NDIRECT]);
+
+      //TODO: Write the indirect blocks.
+      blockid_t writeIndirectBlocks[BLOCK_SIZE];
+      for(uint32_t j = 0;j < NINDIRECT && writeSize < size; j++,writeSize += BLOCK_SIZE ){
+        writeIndirectBlocks[j] = bm -> alloc_block();
+        bm->write_block(writeIndirectBlocks[j],buf + writeSize);
+      }
+      node->blocks[NDIRECT] = bm->alloc_block();
+      bm->write_block(node->blocks[NDIRECT],(char *)writeIndirectBlocks);
+    }
   }
+
+
   node->mtime = (unsigned) time(0);
   node->atime = (unsigned) time(0);
+  node->size = size;
   put_inode(inum,node);
   free(node);
   return;
