@@ -58,7 +58,7 @@ getattr(yfs_client::inum inum, struct stat &st)
         st.st_ctime = info.ctime;
         st.st_size = info.size;
         printf("   getattr -> %llu\n", info.size);
-    } else {
+    } else if(yfs->isdir(inum)) {
         yfs_client::dirinfo info;
         ret = yfs->getdir(inum, info);
         if(ret != yfs_client::OK)
@@ -69,6 +69,18 @@ getattr(yfs_client::inum inum, struct stat &st)
         st.st_mtime = info.mtime;
         st.st_ctime = info.ctime;
         printf("   getattr -> %lu %lu %lu\n", info.atime, info.mtime, info.ctime);
+    } else{
+        yfs_client::fileinfo info;
+        ret = yfs->getfile(inum, info);
+        if (ret != yfs_client::OK)
+            return ret;
+        st.st_mode = S_IFLNK | 0777;
+        st.st_nlink = 1;
+        st.st_atime = info.atime;
+        st.st_mtime = info.mtime;
+        st.st_ctime = info.ctime;
+        st.st_size = info.size;
+        printf("   getattr -> link %llu\n", info.size);
     }
     return yfs_client::OK;
 }
@@ -95,7 +107,6 @@ fuseserver_getattr(fuse_req_t req, fuse_ino_t ino,
     struct stat st;
     yfs_client::inum inum = ino; // req->in.h.nodeid;
     yfs_client::status ret;
-
     ret = getattr(inum, st);
     if(ret != yfs_client::OK){
         fuse_reply_err(req, ENOENT);
@@ -459,6 +470,48 @@ fuseserver_statfs(fuse_req_t req)
 
 struct fuse_lowlevel_ops fuseserver_oper;
 
+void fuseserver_symlink(fuse_req_t req, const char *link, fuse_ino_t parent, 
+        const char *name)
+{
+    printf("fuseserver symlink\n");
+    yfs_client::inum inum;
+    int ret = yfs->symlink(parent,link,name,inum);
+    struct fuse_entry_param e;
+    if( ret != extent_protocol::OK){
+        if (ret == yfs_client::EXIST) {
+            fuse_reply_err(req, EEXIST);
+        } else {
+            fuse_reply_err(req, ENOENT);
+        }
+        return;
+    } else {
+        e.attr_timeout = 0.0;
+        e.entry_timeout = 0.0;
+        e.generation = 0;
+        e.ino = inum;
+        ret = getattr(inum,e.attr);
+        if (ret != yfs_client::OK) {
+            fuse_reply_err(req, ENOENT);
+            return;
+        }
+
+        fuse_reply_entry(req,&e);
+    }
+}
+
+void fuseserver_readlink(fuse_req_t req, fuse_ino_t ino){
+    yfs_client::inum inum = ino;
+    yfs_client::status ret;
+
+    std::string buf;
+    ret = yfs->readlink(inum, buf);
+    if (ret != yfs_client::OK) {
+        fuse_reply_err(req, ENOENT);
+        return;
+    }
+    fuse_reply_readlink(req, buf.c_str());
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -504,6 +557,8 @@ main(int argc, char *argv[])
      * routines here to implement symbolic link,
      * rmdir, etc.
      * */
+    fuseserver_oper.symlink    = fuseserver_symlink;
+    fuseserver_oper.readlink   = fuseserver_readlink;
 
     const char *fuse_argv[20];
     int fuse_argc = 0;

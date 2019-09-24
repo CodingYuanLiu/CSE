@@ -100,11 +100,11 @@ inode_manager::inode_manager()
     exit(0);
   }
   root_dir = (struct inode*)malloc(sizeof(struct inode));
-  root_dir->type = (short)0;
-  root_dir->atime = 0;
-  root_dir->ctime = 0;
-  root_dir->mtime = 0;
-  root_dir->size = 1;
+  root_dir->type = extent_protocol::T_DIR;
+  root_dir->atime = (unsigned) time(0);
+  root_dir->ctime = (unsigned) time(0);
+  root_dir->mtime = (unsigned) time(0);
+  root_dir->size = 0;
   put_inode(1,root_dir);
 }
 
@@ -127,9 +127,9 @@ inode_manager::alloc_inode(uint32_t type) //part1A
       new_inode = new inode();
       new_inode->type = (short)type;
       new_inode->size = 0;
-      new_inode->atime = time(0);
-      new_inode->ctime = time(0);
-      new_inode->mtime = time(0);
+      new_inode->atime = (unsigned) time(0);
+      new_inode->ctime = (unsigned) time(0);
+      new_inode->mtime = (unsigned) time(0);
       put_inode(target,new_inode);
       free(new_inode);
       return target;
@@ -218,6 +218,7 @@ inode_manager::read_file(uint32_t inum, char **buf_out, int *size) //Part1B
    * and copy them to buf_Out
    */
   inode* node = get_inode(inum);
+  assert(node != NULL);
   uint32_t fileSize = node->size;
   *size = node->size;
   int blocknum = FILE_BLOCK_NUM(*size);
@@ -362,7 +363,7 @@ inode_manager::write_file(uint32_t inum, const char *buf, int size) //Part1B
     } else{
       //Case 2.1: write the new direct blocks.
       for(; currentBlock < NDIRECT; writeSize += BLOCK_SIZE,currentBlock++){
-        node->blocks[currentBlock] = bm->alloc_blhttps://www.cnblogs.com/fnlingnzb-learner/p/5889483.htmlock();
+        node->blocks[currentBlock] = bm->alloc_block();
         bm->write_block(node->blocks[currentBlock],buf + writeSize);
       }
     }
@@ -379,6 +380,7 @@ inode_manager::write_file(uint32_t inum, const char *buf, int size) //Part1B
 
   node->mtime = (unsigned) time(0);
   node->atime = (unsigned) time(0);
+  node->ctime = (unsigned) time(0);
   node->size = size;
   put_inode(inum,node);
   free(node);
@@ -427,9 +429,9 @@ inode_manager::remove_file(uint32_t inum)
     for(uint32_t i = 0;i < NINDIRECT && freeSize < fileSize; i++,freeSize += BLOCK_SIZE){
       bm->free_block(indirectBlocks[i]);
     }
+    bm->free_block(node->blocks[NDIRECT]);
   }
   free_inode(inum);
   free(node);
   return;
 }
-
