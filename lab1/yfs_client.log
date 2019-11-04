@@ -1,5 +1,0 @@
-	im: get_inode 1
-	im: inode not exist
-	im: put_inode 1
-fuse: bad mount point `/home/stu/devlop/lab1/yfs1': Transport endpoint is not connected
-fuse_parse_cmdline failed
