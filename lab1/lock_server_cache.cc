@@ -59,7 +59,7 @@ int lock_server_cache::acquire(lock_protocol::lockid_t lid, std::string id,
   {
     lockattr->state = REVOKING;
     lockattr->waiting_clients.push(id);
-    printf("Revoke client %s in locked\n",lockattr->owner.c_str());
+    //printf("Revoke client %s in locked\n",lockattr->owner.c_str());
     pthread_mutex_unlock(&lock);
     client_callers[lockattr->owner]->call(rlock_protocol::revoke,lid,r);
     //No matter this revoke successfully 
@@ -83,7 +83,7 @@ int lock_server_cache::acquire(lock_protocol::lockid_t lid, std::string id,
       lockattr->owner = lockattr->waiting_clients.front();
       lockattr->waiting_clients.pop();
       lockattr->state = LOCKED;
-      printf("The client %s get the lock in retry\n",id.c_str());
+      //printf("The client %s get the lock in retry\n",id.c_str());
       //TODO: if other waiting clients exist, change the server state to revoking and revoke 
       //the new owner of the lock
       //Alert!!!: The new owner must get the lock first, and then get then try to release 
@@ -91,7 +91,7 @@ int lock_server_cache::acquire(lock_protocol::lockid_t lid, std::string id,
       if(!lockattr->waiting_clients.empty()){
         lockattr->state = REVOKING;
         pthread_mutex_unlock(&lock);
-        printf("Revoke client %s in retrying\n",lockattr->owner.c_str());
+        //printf("Revoke client %s in retrying\n",lockattr->owner.c_str());
         client_callers[lockattr->owner]->call(rlock_protocol::revoke,lid,r);
         return lock_protocol::OK;  
       }
@@ -119,9 +119,9 @@ int lock_server_cache::release(lock_protocol::lockid_t lid, std::string id,
   lockattr->state = RETRYING;
   lockattr->owner.clear();
   int re;
-  printf("client %s released the lock successfully\n",id.c_str());
+  //printf("client %s released the lock successfully\n",id.c_str());
   pthread_mutex_unlock(&lock);
-  printf("rpc: call client %s to retry\n",lockattr->waiting_clients.front().c_str());
+  //printf("rpc: call client %s to retry\n",lockattr->waiting_clients.front().c_str());
   client_callers[lockattr->waiting_clients.front()]->call(rlock_protocol::retry,lid,re);
   
   return ret;

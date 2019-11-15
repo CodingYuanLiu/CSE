@@ -168,9 +168,11 @@ write1(const char *d, const char *f, int start, int n, char c)
     exit(1);
   }
   for(int i = 0; i < n; i++){
-    if(write(fd, &c, 1) != 1){
+    int w;
+    if((w = write(fd, &c, 1)) != 1){
       fprintf(stderr, "test-lab2-part2-a: write(%s): %s\n",
               name, strerror(errno));
+      printf("errnum:%d, write:%x, start:%d, i:%d\n",errno,w,start,i);
       exit(1);
     }
     if(fsync(fd) != 0){

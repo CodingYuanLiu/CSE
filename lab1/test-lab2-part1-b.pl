@@ -109,8 +109,10 @@ sub checkcontent {
       $c2 .= $_;
     }
     close(F);
-    $files->{$name} eq $c2 or die "content of $f is incorrect\n";
-}
+
+    my $content=$files->{$name};
+    $files->{$name} eq $c2 or die "it should be:\n $content \nbut $c2.\ncontent of $f is incorrect.\n";
+}   
 
 sub checknot {
     my($d, $name) = @_;

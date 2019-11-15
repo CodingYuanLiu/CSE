@@ -111,7 +111,6 @@ extent_client::put(extent_protocol::extentid_t eid, std::string buf)
   }
   attr.mtime = time(0);
   attr.ctime = time(0);
-  attr.size = buf.size();
   cacheManager->updateattr(eid,attr);
   
   
@@ -138,7 +137,7 @@ extent_client::remove(extent_protocol::extentid_t eid)
   return ret;
 }
 
-
+/*
 rextent_protocol::status 
 extent_client::flush(extent_protocol::extentid_t eid,int &){
   rextent_protocol::status ret = rextent_protocol::OK;
@@ -148,3 +147,4 @@ extent_client::flush(extent_protocol::extentid_t eid,int &){
   cacheManager->clear_flush(eid);
   return ret;
 }
+*/

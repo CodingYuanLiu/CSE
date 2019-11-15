@@ -30,12 +30,14 @@ private:
     int rlock_port;
     std::string hostname;
 
+    //The revoke and retry handler set the message and handle in asynchronize way.
     enum Message {
         EMPTY,
         RETRY,
         REVOKE
     };
-
+    
+    //just like the hint said.
     enum LockState {
         NONE,
         ACQUIRING,
@@ -44,36 +46,37 @@ private:
         LOCKED,
     };
 
-
-    struct QueuingThread {
+    
+    struct waiting_thread {
 
         pthread_cond_t cv;
 
-        QueuingThread() {
+        waiting_thread() {
             pthread_cond_init(&cv, NULL);
         }
     };
 
 
-    struct LockEntry {
+    struct cli_lockattr {
         LockState state;
         Message message;
-        std::list<QueuingThread *> threads;
+        //The queue of the waiting threads. The head thread is responsible for acquiring the lock.
+        std::list<waiting_thread *> threads;
 
-        LockEntry() {
+        cli_lockattr() {
             state = NONE;
             message = EMPTY;
         }
     };
 
 
-    pthread_mutex_t lockManagerLock;
+    pthread_mutex_t lock;
 
-    std::map<lock_protocol::lockid_t, LockEntry *> lockManager;
+    std::map<lock_protocol::lockid_t, cli_lockattr *> lockManager;
 
-    lock_protocol::status blockUntilGot(LockEntry *,
+    lock_protocol::status acquire_from_server(cli_lockattr *,
                                         lock_protocol::lockid_t,
-                                        QueuingThread *thisThread);
+                                        waiting_thread *thisThread);
 
 
 public:

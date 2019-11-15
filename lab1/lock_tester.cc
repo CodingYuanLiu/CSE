@@ -81,7 +81,6 @@ void *
 test2(void *x) 
 {
   int i = * (int *) x;
-
   printf ("test2: client %d acquire a release a\n", i);
   lc[i]->acquire(a);
   printf ("test2: client %d acquire done\n", i);
@@ -117,6 +116,7 @@ test4(void *x)
 
   printf ("test4: thread %d acquire a release a concurrent; same clnt\n", i);
   for (int j = 0; j < 10; j++) {
+    printf("test4: thread %d on client 0 try to acquire the lock\n",i);
     lc[0]->acquire(a);
     check_grant(a);
     printf ("test4: thread %d on client 0 got lock\n", i);
@@ -177,7 +177,7 @@ main(int argc, char *argv[])
     //for (int i = 0; i < nt; i++) lc[i] = new lock_client(dst);
     printf("cache lock client\n");
     for (int i = 0; i < nt; i++) lc[i] = new lock_client_cache(dst);
-
+    for( int i = 0; i < nt; i++) printf("client %d's id is %s\n",i,lc[i]->id.c_str());
     if(!test || test == 1){
       test1();
     }
@@ -193,7 +193,7 @@ main(int argc, char *argv[])
 	pthread_join(th[i], NULL);
       }
     }
-
+      
     if(!test || test == 3){
       printf("test 3\n");
       

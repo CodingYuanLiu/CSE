@@ -279,111 +279,104 @@ inode_manager::write_file(uint32_t inum, const char *buf, int size) //Part1B
    * you need to consider the situation when the size of buf 
    * is larger or smaller than the size of original inode
    */
-  inode* node = get_inode(inum);
-  int originalSize = node->size;
-  int blocknum = FILE_BLOCK_NUM(size);
-  if (blocknum > BLOCK_NUM){
-    printf("write_file error: blocknum out of bound.\n");
-    return;
-  }
-  int writeSize = 0;
 
-  /* 
-    Cases: 
-    1. new blocknum < ndirect:
-      1.1 old blocknum < new blocknum < ndirect
-      1.2 new blocknum < old blocknum < ndirect
-      1.3 new blocknum < ndirect < old blocknum
-    2. new blocknum > ndirect:
-      2.1 old blocknum < ndirect < new blocknum
-      2.2 ndirect < old blocknum < new blocknum 
-        || ndirect < new blocknum < old blocknum (All free indirect blocks first)
-  */
-  if(blocknum <= NDIRECT){
-    int currentBlock;
-    //no need to alloc new block.
-    //Case 1.2
-    for(currentBlock = 0; writeSize < originalSize && writeSize < size;writeSize += BLOCK_SIZE,currentBlock++){
-        bm->write_block(node->blocks[currentBlock],buf + writeSize);
-    }
+  /*rewrite the function in lab3*/
+  char block[BLOCK_SIZE];
+  char indirect[BLOCK_SIZE];
+  inode_t * ino = get_inode(inum);
+  unsigned int oldBlockNum = (ino->size + BLOCK_SIZE - 1) / BLOCK_SIZE;
+  unsigned int newBlockNum = (size + BLOCK_SIZE - 1) / BLOCK_SIZE;
 
-    //New block needs to be allocated
-    //Case 1.1
-    if(writeSize < size){
-      for(;currentBlock < NDIRECT && writeSize < size ; writeSize += BLOCK_SIZE , currentBlock++){
-        node->blocks[currentBlock] = bm->alloc_block();
-        bm->write_block(node->blocks[currentBlock],buf + writeSize);
+  /* Free some blocks */
+  if (oldBlockNum > newBlockNum) {
+    if (newBlockNum > NDIRECT) {
+      bm->read_block(ino->blocks[NDIRECT], indirect);
+      for (unsigned int i = newBlockNum; i < oldBlockNum; ++i) {
+        bm->free_block(*((blockid_t *)indirect + (i - NDIRECT)));
       }
-    } else if ( writeSize < originalSize ){ // old blocks need to be freed
-      // Case 1.2
-      int freeSize = writeSize;
-      for(;currentBlock < NDIRECT && freeSize < originalSize;currentBlock++,freeSize += BLOCK_SIZE){
-        bm->free_block(node->blocks[currentBlock]);
-      }
-      
-      // Case 1.3
-      //Free INDIRECT BLOCKS
-      if (freeSize < originalSize){
-        blockid_t indirectBlocks[BLOCK_SIZE];
-        assert(currentBlock == NDIRECT);
-        
-        bm->read_block(node->blocks[NDIRECT],(char *)indirectBlocks);
-        for(uint32_t j = 0;j < NINDIRECT && freeSize < originalSize; j++,freeSize += BLOCK_SIZE){
-          bm->free_block(indirectBlocks[j]);
+    } else {
+      if (oldBlockNum > NDIRECT) {
+        bm->read_block(ino->blocks[NDIRECT], indirect);
+        for (unsigned int i = NDIRECT; i < oldBlockNum; ++i) {
+          bm->free_block(*((blockid_t *)indirect + (i - NDIRECT)));
+        }
+        bm->free_block(ino->blocks[NDIRECT]);
+        for (unsigned int i = newBlockNum; i < NDIRECT; ++i) {
+          bm->free_block(ino->blocks[i]);
+        }
+      } else {
+        for (unsigned int i = newBlockNum; i < oldBlockNum; ++i) {
+          bm->free_block(ino->blocks[i]);
         }
       }
-      bm->free_block(node->blocks[NDIRECT]);
     }
-  } 
-  
-  // Case 2
-  else { 
-    //BLOCKNUM > NDIRECT, which means that new file contains indirect blocks.
-    int currentBlock;
-    //no need to alloc new block.
-    //Case 2.1
-    for(currentBlock = 0; currentBlock < NDIRECT && writeSize < originalSize;writeSize += BLOCK_SIZE,currentBlock++){
-      bm->write_block(node->blocks[currentBlock],buf + writeSize);
-    }
-    
-    //Case 2.2
-    //new files and old files both contain indirect blocks.
-    //Free indirect blocks
-    if(writeSize < originalSize){
-      assert(currentBlock == NDIRECT);
-
-      //Free the indirect blocks of the old file first
-      int freeSize = writeSize;
-      blockid_t originalIndirectBlocks[BLOCK_SIZE];
-      bm->read_block(node->blocks[NDIRECT],(char *)originalIndirectBlocks);
-      for(uint32_t j = 0;j < NINDIRECT && freeSize < originalSize ; j++, freeSize += BLOCK_SIZE){
-        bm->free_block(originalIndirectBlocks[j]);
-      }
-      bm->free_block(node->blocks[NDIRECT]);
-    } else{
-      //Case 2.1: write the new direct blocks.
-      for(; currentBlock < NDIRECT; writeSize += BLOCK_SIZE,currentBlock++){
-        node->blocks[currentBlock] = bm->alloc_block();
-        bm->write_block(node->blocks[currentBlock],buf + writeSize);
-      }
-    }
-    //Case 2.1 && Case 2.2, write the indirect blocks
-    blockid_t writeIndirectBlocks[BLOCK_SIZE];
-    for(uint32_t j = 0;j < NINDIRECT && writeSize < size; j++,writeSize += BLOCK_SIZE ){
-      writeIndirectBlocks[j] = bm -> alloc_block();
-      bm->write_block(writeIndirectBlocks[j],buf + writeSize);
-    }
-    node->blocks[NDIRECT] = bm->alloc_block();
-    bm->write_block(node->blocks[NDIRECT],(char *)writeIndirectBlocks);
-    
   }
 
-  node->mtime = (unsigned) time(0);
-  node->atime = (unsigned) time(0);
-  node->ctime = (unsigned) time(0);
-  node->size = size;
-  put_inode(inum,node);
-  free(node);
+  /* Allock some blocks */
+  if (newBlockNum > oldBlockNum) {
+    if (newBlockNum <= NDIRECT) {
+      for (unsigned int i = oldBlockNum; i < newBlockNum; ++i) {
+        ino->blocks[i] = bm->alloc_block();
+      }
+    } else {
+      if (oldBlockNum <= NDIRECT) {
+        for (unsigned int i = oldBlockNum; i < NDIRECT; ++i) {
+          ino->blocks[i] = bm->alloc_block();
+        }
+        ino->blocks[NDIRECT] = bm->alloc_block();
+
+        bzero(indirect, BLOCK_SIZE);
+        for (unsigned int i = NDIRECT; i < newBlockNum; ++i) {
+          *((blockid_t *)indirect + (i - NDIRECT)) = bm->alloc_block();
+        }
+        bm->write_block(ino->blocks[NDIRECT], indirect);
+      } else {
+        bm->read_block(ino->blocks[NDIRECT], indirect);
+        for (unsigned int i = oldBlockNum; i < newBlockNum; ++i) {
+          *((blockid_t *)indirect + (i - NDIRECT)) = bm->alloc_block();
+        }
+        bm->write_block(ino->blocks[NDIRECT], indirect);
+      }
+    }
+  }
+
+  /* Write */
+  int pos = 0;
+  unsigned int i;
+  for (i = 0; i < NDIRECT && pos < size; i++) {
+    if (size - pos > BLOCK_SIZE) {
+      bm->write_block(ino->blocks[i], buf + pos);
+      pos += BLOCK_SIZE;
+    } else {
+      int len = size - pos;
+      memcpy(block, buf + pos, len);
+      bm->write_block(ino->blocks[i], block);
+      pos += len;
+    }
+  }
+
+  if (pos < size) {
+    bm->read_block(ino->blocks[NDIRECT], indirect);
+    for (i = 0; i < NINDIRECT && pos < size; i++) {
+      blockid_t ix = *((blockid_t *)indirect + i);
+      if (size - pos > BLOCK_SIZE) {
+        bm->write_block(ix, buf + pos);
+        pos += BLOCK_SIZE;
+      } else {
+        int len = size - pos;
+        memcpy(block, buf + pos, len);
+        bm->write_block(ix, block);
+        pos += len;
+      }
+    }
+  }
+
+  /* update inode */
+  ino->size = size;
+  ino->mtime = time(0);
+  ino->ctime = time(0);
+  put_inode(inum, ino);
+  free(ino);
   return;
 }
 

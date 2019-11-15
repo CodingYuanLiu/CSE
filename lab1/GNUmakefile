@@ -8,7 +8,7 @@ LAB4GE=$(shell expr $(LAB) \>\= 4)
 LAB5GE=$(shell expr $(LAB) \>\= 5)
 LAB6GE=$(shell expr $(LAB) \>\= 6)
 LAB7GE=$(shell expr $(LAB) \>\= 7)
-CXXFLAGS =  -g -MMD -Wall -I. -I$(RPC) -DLAB=$(LAB) -DSOL=$(SOL) -D_FILE_OFFSET_BITS=64
+CXXFLAGS =  -g -MMD -Wall -I. -I$(RPC) -DLAB=$(LAB) -DSOL=$(SOL) -D_FILE_OFFSET_BITS=64 --std=c++11
 FUSEFLAGS= -D_FILE_OFFSET_BITS=64 -DFUSE_USE_VERSION=25 -I/usr/local/include/fuse -I/usr/include/fuse
 
 # choose librpc based on architecture
@@ -55,7 +55,7 @@ hfiles1=rpc/fifo.h rpc/connection.h rpc/rpc.h rpc/marshall.h rpc/method_thread.h
 	rpc/thr_pool.h rpc/pollmgr.h rpc/jsl_log.h rpc/slock.h rpc/rpctest.cc\
 	lock_protocol.h lock_server.h lock_client.h gettime.h gettime.cc lang/verify.h \
         lang/algorithm.h
-hfiles2=yfs_client.h extent_client.h extent_protocol.h extent_server.h
+hfiles2=yfs_client.h extent_client.h extent_protocol.h extent_server.h extent_client_cache.h
 hfiles3=lock_client_cache.h lock_server_cache.h handle.h tprintf.h
 hfiles4=log.h rsm.h rsm_protocol.h config.h paxos.h paxos_protocol.h rsm_state_transfer.h rsmtest_client.h tprintf.h
 hfiles5=rsm_state_transfer.h rsm_client.h
@@ -89,9 +89,9 @@ endif
 
 lock_server : $(patsubst %.cc,%.o,$(lock_server)) rpc/$(RPCLIB)
 
-part1_tester=part1_tester.cc extent_client.cc extent_server.cc inode_manager.cc
+part1_tester=part1_tester.cc extent_client.cc extent_server.cc inode_manager.cc extent_client_cache.cc
 part1_tester : $(patsubst %.cc,%.o,$(part1_tester))
-yfs_client=yfs_client.cc extent_client.cc fuse.cc extent_server.cc inode_manager.cc
+yfs_client=yfs_client.cc extent_client.cc fuse.cc extent_server.cc inode_manager.cc extent_client_cache.cc
 ifeq ($(LAB2GE),1)
   yfs_client += lock_client.cc
 endif
@@ -132,12 +132,13 @@ clean_files=rpc/rpctest rpc/*.o rpc/*.d *.o *.d yfs_client extent_server lock_se
 clean: 
 	rm $(clean_files) -rf 
 
-handin_ignore=$(clean_files) core* *log
+handin_ignore=$(clean_files) core* *log .git/*
 handin_file=lab$(LAB).tgz
 labdir=$(shell basename $(PWD))
 handin: 
 	@bash -c "cd ../; tar -X <(tr ' ' '\n' < <(echo '$(handin_ignore)')) -czvf $(handin_file) $(labdir); mv $(handin_file) $(labdir); cd $(labdir)"
 	@echo Please modify lab3.tgz to lab3_[your student id].tgz and upload it to ftp://LuXuKun:public@public.sjtu.edu.cn/upload/cse/lab3
+
 	@echo Thanks!
 
 rpcdemo: demo_server demo_client

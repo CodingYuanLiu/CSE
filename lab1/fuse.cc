@@ -43,6 +43,7 @@ getattr(yfs_client::inum inum, struct stat &st)
     yfs_client::status ret;
 
     bzero(&st, sizeof(st));
+    printf("mydebug: get attr of %llu\n",inum);
 
     st.st_ino = inum;
     printf("getattr %016llx %d\n", inum, yfs->isfile(inum));
@@ -175,7 +176,18 @@ fuseserver_read(fuse_req_t req, fuse_ino_t ino, size_t size,
     // Change the above "#if 0" to "#if 1", and your code goes here
     int r;
     if ((r = yfs->read(ino, size, off, buf)) == yfs_client::OK) {
-        fuse_reply_buf(req, buf.data(), buf.size());    
+        
+        char* retbuf = (char *)malloc(buf.size());
+        memcpy(retbuf,buf.data(),buf.size());
+        printf("addr: ret:%lx, buf:%lx\n",(unsigned long)retbuf,(unsigned long)buf.data());
+        printf("debug read in fuse: the content of %lu is %s, size %lu\n",ino,retbuf, buf.size());
+        
+       /*
+        char* retbuf = (char *)malloc(20);
+        memset(retbuf,'7',20);
+        fuse_reply_buf(req, retbuf, 20);
+        */
+       fuse_reply_buf(req,retbuf,buf.size());    
     } else {
         fuse_reply_err(req, ENOENT);
     }
@@ -210,7 +222,7 @@ fuseserver_write(fuse_req_t req, fuse_ino_t ino,
     // Change the above line to "#if 1", and your code goes here
     int r;
     if ((r = yfs->write(ino, size, off, buf, size)) == yfs_client::OK) {
-        printf("Debug in fuse: write return OK\n");
+        printf("Debug in fuse: write %lu return OK\n",ino);
         fuse_reply_write(req, size);
     } else {
         fuse_reply_err(req, ENOENT);
@@ -303,6 +315,8 @@ fuseserver_lookup(fuse_req_t req, fuse_ino_t parent, const char *name)
 {
     struct fuse_entry_param e;
     // In yfs, timeouts are always set to 0.0, and generations are always set to 0
+    printf("mydebug: lookup in %lu,name %s\n",parent,name);
+
     e.attr_timeout = 0.0;
     e.entry_timeout = 0.0;
     e.generation = 0;
@@ -365,7 +379,7 @@ fuseserver_readdir(fuse_req_t req, fuse_ino_t ino, size_t size,
     yfs_client::inum inum = ino; // req->in.h.nodeid;
     struct dirbuf b;
 
-    printf("fuseserver_readdir\n");
+    printf("mydebug:readdir of %lu\n",ino);
 
     if(!yfs->isdir(inum)){
         fuse_reply_err(req, ENOTDIR);
@@ -389,6 +403,7 @@ void
 fuseserver_open(fuse_req_t req, fuse_ino_t ino,
         struct fuse_file_info *fi)
 {
+    printf("mydebug: open %lu\n",ino);
     fuse_reply_open(req, fi);
 }
 
